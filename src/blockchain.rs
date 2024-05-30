@@ -1,6 +1,40 @@
+use ring::signature::KeyPair;
+
+use crate::address::{get_deterministic_keypair, H160};
 use crate::block::Block;
 use crate::crypto::hash::{H256, Hashable};
 use std::collections::HashMap; 
+
+#[derive(Clone)]
+pub struct State {
+    map: HashMap<H160, (u32, u64)>, // (nonce, balance)
+}
+
+impl State {
+    /// Initial coin offering; generate an initial state.
+    fn ico() -> Self {
+        let mut state = HashMap::new();
+        // give the i-th account 1000 * (10 - i) coins, i = 0, 1, 2, ..., 9
+        for i in 0..10 {
+            let pair = get_deterministic_keypair(i);
+            let address = H160::from_pubkey(pair.public_key().as_ref());
+            let balance: u64 = 1000 * ((10 - i) as u64);
+            let nonce: u32 = 0;
+            state.insert(address, (nonce, balance));
+        }
+        State { map: state }
+    }
+
+    pub fn get(&self, address: &H160) -> Option<&(u32, u64)> {
+        self.map.get(address)
+    }
+
+    pub fn update(&mut self, address: H160, nonce: u32, balance: u64) {
+        self.map.insert(address, (nonce, balance));
+    }
+
+    // other methods...
+}
 
 /// Whether the block is mined or received from the network
 pub enum BlockOrigin {
