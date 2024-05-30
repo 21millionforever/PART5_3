@@ -1,6 +1,7 @@
 use serde::{Serialize, Deserialize};
 use crate::crypto::hash::{H256, Hashable};
-use crate::transaction::RawTransaction;
+// use crate::transaction::RawTransaction;
+use crate::transaction::SignedTransaction;
 
 /// The block header
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -15,7 +16,8 @@ pub struct Header {
 /// Transactions contained in a block
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Content {
-    pub transactions: Vec<RawTransaction>,
+    // pub transactions: Vec<RawTransaction>,
+    pub transactions: Vec<SignedTransaction>,
 }
 
 /// A block in the blockchain
@@ -37,7 +39,7 @@ fn default_difficulty() -> [u8; 32] {
 impl Block {
     /// Construct the (totally deterministic) genesis block
     pub fn genesis() -> Block {
-        let transactions: Vec<RawTransaction> = vec![];
+        let transactions: Vec<SignedTransaction> = vec![];
         let header = Header {
             parent: Default::default(),
             nonce: 0,
@@ -70,23 +72,23 @@ impl Hashable for Block {
     }
 }
 
-#[cfg(any(test, test_utilities))]
-pub mod test {
-    use super::*;
-    use crate::crypto::hash::H256;
-    use crate::crypto::merkle::MerkleTree;
+// #[cfg(any(test, test_utilities))]
+// pub mod test {
+//     use super::*;
+//     use crate::crypto::hash::H256;
+//     use crate::crypto::merkle::MerkleTree;
 
-    pub fn generate_random_block(parent: &H256) -> Block {
-        let transactions: Vec<RawTransaction> = vec![Default::default()];
-        let root = MerkleTree::new(&transactions).root();
-        let header = Header {
-            parent: *parent,
-            nonce: rand::random(),
-            difficulty: default_difficulty().into(),
-            timestamp: rand::random(),
-            merkle_root: root,
-        };
-        let content = Content { transactions };
-        Block { header, content }
-    }
-}
+//     pub fn generate_random_block(parent: &H256) -> Block {
+//         let transactions: Vec<RawTransaction> = vec![Default::default()];
+//         let root = MerkleTree::new(&transactions).root();
+//         let header = Header {
+//             parent: *parent,
+//             nonce: rand::random(),
+//             difficulty: default_difficulty().into(),
+//             timestamp: rand::random(),
+//             merkle_root: root,
+//         };
+//         let content = Content { transactions };
+//         Block { header, content }
+//     }
+// }

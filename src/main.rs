@@ -17,6 +17,7 @@ use clap::clap_app;
 use crossbeam::channel;
 use log::{error, info};
 use api::Server as ApiServer;
+use mempool::Mempool;
 use network::{server, worker};
 use std::net;
 use std::process;
@@ -73,6 +74,9 @@ fn main() {
     // create the Blockchain
     let blockchain = Arc::new(Mutex::new(Blockchain::new()));
 
+    // create the Mempool
+    let mempool = Arc::new(Mutex::new(Mempool::new()));
+
     // start the worker
     let p2p_workers = matches
         .value_of("p2p_workers")
@@ -87,6 +91,7 @@ fn main() {
         msg_rx,
         &server,
         &blockchain,
+        &mempool, // pass the mempool to the worker
     );
     worker_ctx.start();
 
@@ -94,8 +99,24 @@ fn main() {
     let (miner_ctx, miner) = miner::new(
         &server,
         &blockchain,
+        &mempool, // pass the mempool to the miner
     );
     miner_ctx.start();
+
+    // Generate a key pair
+    let rng = ring::rand::SystemRandom::new();
+    let pkcs8_bytes = ring::signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+    let controlled_keypair = ring::signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
+
+    // start the transaction generator
+    let transaction_generator = transaction_generator::TransactionGenerator::new(
+        &server,
+        &mempool,
+        &blockchain,
+        controlled_keypair,
+    );
+    
+    transaction_generator.start();
 
     // connect to known peers
     if let Some(known_peers) = matches.values_of("known_peer") {

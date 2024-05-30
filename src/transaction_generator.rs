@@ -1,8 +1,10 @@
 use serde::{Serialize,Deserialize};
 use ring::signature::{Ed25519KeyPair, Signature, KeyPair, VerificationAlgorithm, EdDSAParameters};
+use crate::address::H160;
 use crate::crypto::hash::{H256, Hashable};
 
 use crate::network::server::Handle as ServerHandle;
+use crate::transaction::{RawTransaction, SignedTransaction};
 use std::thread;
 use std::time;
 use std::sync::{Arc, Mutex};
@@ -49,11 +51,20 @@ impl TransactionGenerator {
             thread::sleep(interval);
 
             // 1. generate some random transactions:
-            unimplemented!();
+            let raw_transaction = RawTransaction {
+                from_addr: H160::from_pubkey(self.controlled_keypair.public_key().as_ref()),
+                to_addr: H160::from_pubkey(self.controlled_keypair.public_key().as_ref()), // for example, send to self
+                value: 10,
+                nonce: 0, // update as needed
+            };
+            let signed_transaction = SignedTransaction::from_raw(raw_transaction, &self.controlled_keypair);
+
             // 2. add these transactions to the mempool:
-            unimplemented!();
+            let mut mempool = self.mempool.lock().unwrap();
+            mempool.insert(signed_transaction.clone());
+
             // 3. broadcast them using `self.server.broadcast(Message::NewTransactionHashes(...))`:
-            unimplemented!();
+            self.server.broadcast(Message::NewTransactionHashes(vec![signed_transaction.hash()]));
         }
     }
 }

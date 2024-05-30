@@ -1,5 +1,6 @@
 use super::message::Message;
 use super::peer;
+use crate::mempool::Mempool;
 use crate::network::server::Handle as ServerHandle;
 use crossbeam::channel;
 use log::{debug, warn};
@@ -17,6 +18,8 @@ pub struct Context {
     num_worker: usize,
     server: ServerHandle,
     blockchain: Arc<Mutex<Blockchain>>,
+    mempool: Arc<Mutex<Mempool>>,
+
 }
 
 pub fn new(
@@ -24,12 +27,14 @@ pub fn new(
     msg_src: channel::Receiver<(Vec<u8>, peer::Handle)>,
     server: &ServerHandle,
     blockchain: &Arc<Mutex<Blockchain>>,
+    mempool: &Arc<Mutex<Mempool>>,
 ) -> Context {
     Context {
         msg_chan: msg_src,
         num_worker,
         server: server.clone(),
         blockchain: Arc::clone(blockchain),
+        mempool: Arc::clone(mempool),
     }
 }
 
@@ -110,7 +115,39 @@ impl Context {
                     if !relay_hashes.is_empty() {
                         self.server.broadcast(Message::NewBlockHashes(relay_hashes));
                     }
+                },
+                Message::NewTransactionHashes(hashes) => {
+                    let mempool = self.mempool.lock().unwrap();
+                    let missing_hashes: Vec<_> = hashes.into_iter()
+                        .filter(|hash| !mempool.get_transaction(hash).is_some())
+                        .collect();
+                    if !missing_hashes.is_empty() {
+                        peer.write(Message::GetTransactions(missing_hashes));
+                    }
                 }
+                Message::GetTransactions(hashes) => {
+                    let mempool = self.mempool.lock().unwrap();
+                    let transactions: Vec<_> = hashes.into_iter()
+                        .filter_map(|hash| mempool.get_transaction(&hash).cloned())
+                        .collect();
+                    if !transactions.is_empty() {
+                        peer.write(Message::Transactions(transactions));
+                    }
+                }
+                Message::Transactions(transactions) => {
+                    let mut mempool = self.mempool.lock().unwrap();
+                    for transaction in transactions {
+                        if transaction.verify_signature() {
+                            mempool.insert(transaction);
+                        }
+                    }
+                    self.server.broadcast(Message::NewTransactionHashes(
+                        mempool.get_keys()
+                    ));
+                }
+
+
+
             }
         }
     }

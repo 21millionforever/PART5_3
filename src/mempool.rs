@@ -23,8 +23,13 @@ impl Mempool {
     /// Insert a transaction into the mempool
     pub fn insert(&mut self, transaction: Transaction) {
         // (Make sure you have implemented the `Hashable` trait for `SignedTransaction`, or there will be an error):
-        let hash = transaction.hash();
+        let hash = transaction.raw.hash();
         self.hash_to_transaction.insert(hash, transaction);
+    }
+
+    /// Remove a transaction from the mempool by its hash
+    pub fn remove(&mut self, hash: &H256) {
+        self.hash_to_transaction.remove(hash);
     }
 
     /// Remove a random transaction from the mempool and return it (or `None` if it is empty)
@@ -35,6 +40,10 @@ impl Mempool {
         } else {
             None
         }
+    }
+    /// Get the keys of hash_to_transaction
+    pub fn get_keys(&self) -> Vec<H256> {
+        self.hash_to_transaction.keys().cloned().collect()
     }
         
     // TODO Optional: you may want to add more methods here...

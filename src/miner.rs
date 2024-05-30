@@ -9,12 +9,14 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use crate::blockchain::Blockchain;
-use crate::transaction::RawTransaction;
+// use crate::transaction::RawTransaction;
+// use crate::transaction::SignedTransaction;
 use crate::crypto::merkle::MerkleTree;
 use crate::block::{Block, Header, Content};
 use crate::crypto::hash::Hashable;
 use crate::network::message::Message;
 use crate::blockchain::BlockOrigin;
+use crate::mempool::Mempool;
 
 enum ControlSignal {
     Start(u64), // the number controls the lambda of interval between block generation
@@ -33,6 +35,7 @@ pub struct Context {
     operating_state: OperatingState,
     server: ServerHandle,
     blockchain: Arc<Mutex<Blockchain>>,
+    mempool: Arc<Mutex<Mempool>>,
     // For experiments:
     total_blocks_mined: u64,
     start_time: Option<SystemTime>,
@@ -47,6 +50,7 @@ pub struct Handle {
 pub fn new(
     server: &ServerHandle,
     blockchain: &Arc<Mutex<Blockchain>>,
+    mempool: &Arc<Mutex<Mempool>>,
 ) -> (Context, Handle) {
     let (signal_chan_sender, signal_chan_receiver) = unbounded();
 
@@ -55,6 +59,8 @@ pub fn new(
         operating_state: OperatingState::Paused,
         server: server.clone(),
         blockchain: Arc::clone(blockchain),
+        mempool: Arc::clone(mempool),
+
         total_blocks_mined: 0,
         start_time: None,
     };
@@ -156,11 +162,28 @@ impl Context {
                 }
 
                 let mut blockchain = self.blockchain.lock().unwrap();
+                let mut mempool = self.mempool.lock().unwrap();
 
                 let parent = blockchain.tip();
                 let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
                 let difficulty = blockchain.get_block(&parent).header.difficulty;
-                let transactions: Vec<RawTransaction> = vec![Default::default()];
+
+                let mut transactions = vec![];
+
+                // Select random transactions from the mempool
+                while let Some(tx) = mempool.pop() {
+                    transactions.push(tx);
+                    // Set a block size limit if necessary, e.g., max 10 transactions
+                    if transactions.len() >= 10 {
+                        break;
+                    }
+                }
+
+                // Make sure transactions is not empty
+                if transactions.is_empty() {
+                    transactions = vec![Default::default()]; 
+                }
+
                 let merkle_root = MerkleTree::new(&transactions).root();
                 let nonce = rand::random();
         
@@ -171,14 +194,23 @@ impl Context {
                     timestamp,
                     merkle_root, 
                 };
-                let content = Content { transactions };
+                let content = Content { transactions: transactions.clone() };
                 let block = Block { header, content };
 
                 if block.hash() <= difficulty {
+                    info!("A block is mined ");
                     blockchain.insert(&block);
+
                     self.total_blocks_mined += 1;
                     self.server.broadcast(Message::NewBlockHashes(vec![block.hash()]));
                     blockchain.hash_to_origin.insert(block.hash(), BlockOrigin::Mined);
+
+                } else {
+                    info!("Block {} not mined", block.hash());
+                    // Add transactions back to the mempool
+                    for tx in transactions {
+                        mempool.insert(tx);
+                    }
                 }
             }
         }
